@@ -53,7 +53,7 @@ public class LinuxLingo {
     private static void handleOneShot(String[] args, Ui ui,
                                       ShellSession shellSession, ExamSession examSession) {
         switch (args[0]) {
-        case "shell" -> shellSession.start();
+        case "shell" -> shellSession.startInteractive();
         case "exec" -> handleExec(args, ui, shellSession);
         case "exam" -> handleExam(args, examSession);
         default -> {

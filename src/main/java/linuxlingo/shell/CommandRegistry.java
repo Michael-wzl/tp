@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
+import linuxlingo.shell.command.AliasCommand;
 import linuxlingo.shell.command.CatCommand;
 import linuxlingo.shell.command.CdCommand;
 import linuxlingo.shell.command.ChmodCommand;
@@ -20,6 +21,7 @@ import linuxlingo.shell.command.FindCommand;
 import linuxlingo.shell.command.GrepCommand;
 import linuxlingo.shell.command.HeadCommand;
 import linuxlingo.shell.command.HelpCommand;
+import linuxlingo.shell.command.HistoryCommand;
 import linuxlingo.shell.command.LoadCommand;
 import linuxlingo.shell.command.LsCommand;
 import linuxlingo.shell.command.ManCommand;
@@ -35,7 +37,6 @@ import linuxlingo.shell.command.TeeCommand;
 import linuxlingo.shell.command.TouchCommand;
 import linuxlingo.shell.command.TreeCommand;
 import linuxlingo.shell.command.UnaliasCommand;
-import linuxlingo.shell.command.AliasCommand;
 import linuxlingo.shell.command.UniqCommand;
 import linuxlingo.shell.command.WcCommand;
 import linuxlingo.shell.command.WhichCommand;
@@ -101,6 +102,7 @@ public final class CommandRegistry {
         register("unalias", new UnaliasCommand());
         register("tee", new TeeCommand());
         register("diff", new DiffCommand());
+        register("history", new HistoryCommand());
     }
 
     public void register(String name, Command cmd) {

@@ -46,7 +46,7 @@ public class MainParser {
 
         switch (command) {
         case "shell" -> {
-            shellSession.start();
+            shellSession.startInteractive();
             return true;
         }
         case "exec" -> {

@@ -1,16 +1,16 @@
 package linuxlingo.shell;
 
-import linuxlingo.cli.Ui;
-import linuxlingo.shell.command.Command;
-import linuxlingo.shell.vfs.FileNode;
-import linuxlingo.shell.vfs.VirtualFileSystem;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
+
+import linuxlingo.cli.Ui;
+import linuxlingo.shell.command.Command;
+import linuxlingo.shell.vfs.FileNode;
+import linuxlingo.shell.vfs.VirtualFileSystem;
 
 /**
  * Manages the lifecycle of a shell session (interactive REPL + one-shot execution).
@@ -36,6 +36,8 @@ public class ShellSession {
     private final Ui ui;
     private boolean running;
     private final Map<String, String> aliases;
+    private ShellLineReader lineReader;
+    private final List<String> commandHistory;
 
     public ShellSession(VirtualFileSystem vfs, Ui ui) {
         if (vfs == null) {
@@ -50,6 +52,8 @@ public class ShellSession {
         this.registry = new CommandRegistry();
         this.running = false;
         this.aliases = new LinkedHashMap<>();
+        this.lineReader = null;
+        this.commandHistory = new ArrayList<>();
 
         LOGGER.fine("ShellSession initialised with workingDir='/'");
     }
@@ -61,8 +65,10 @@ public class ShellSession {
      *   <li>Read input using {@link Ui#readLine(String)} with the shell prompt.</li>
      *   <li>Loop: read line → handle special words ("back", "exit", "done") → call
      *       {@link #executePlan(String)}.</li>
-     * </ol>
-     */
+     * </ol>     *
+     * <p>If a {@link ShellLineReader} has been set via {@link #setLineReader},
+     * input will be read from JLine (with tab-completion and history).
+     * Otherwise, falls back to {@link Ui#readLine(String)}.</p>     */
     public void start() {
         assert !running : "start() called while session is already running";
 
@@ -71,9 +77,14 @@ public class ShellSession {
         ui.println("Welcome to LinuxLingo Shell! Type 'exit' to quit.");
 
         while (running) {
-            String input = ui.readLine(getPrompt());
+            String input;
+            if (lineReader != null) {
+                input = lineReader.readLine(getPrompt());
+            } else {
+                input = ui.readLine(getPrompt());
+            }
 
-            // null signals end of piped test input
+            // null signals end of piped test input or Ctrl-D
             if (input == null) {
                 running = false;
                 break;
@@ -92,9 +103,37 @@ public class ShellSession {
                 break;
             }
 
+            // Track command in history
+            commandHistory.add(trimmed);
+
             executePlan(input);
         }
+
         LOGGER.info("Shell session ended with lastExitCode=" + lastExitCode);
+    }
+
+    /**
+     * Start an interactive shell with JLine tab-completion and command history.
+     * Creates a {@link ShellLineReader} with a system terminal, then delegates
+     * to {@link #start()}.
+     *
+     * <p>If JLine cannot initialise (e.g. no TTY), falls back to plain Ui input.</p>
+     */
+    public void startInteractive() {
+        try {
+            this.lineReader = ShellLineReader.create(this);
+        } catch (Exception e) {
+            LOGGER.warning("JLine init failed, falling back to Ui: "
+                    + e.getMessage());
+        }
+        try {
+            start();
+        } finally {
+            if (lineReader != null) {
+                lineReader.close();
+                lineReader = null;
+            }
+        }
     }
 
     /**
@@ -340,6 +379,24 @@ public class ShellSession {
 
     public Map<String, String> getAliases() {
         return aliases;
+    }
+
+    public ShellLineReader getLineReader() {
+        return lineReader;
+    }
+
+    public void setLineReader(ShellLineReader reader) {
+        this.lineReader = reader;
+    }
+
+    /**
+     * Get the in-memory command history list.
+     * This is always available, even without JLine.
+     *
+     * @return mutable list of command history entries
+     */
+    public List<String> getCommandHistory() {
+        return commandHistory;
     }
 
     // ─── "Did you mean?" suggestion ─────────────────────────────
