@@ -14,3 +14,8 @@ FITB | EASY   | To show the first 5 lines of data.txt: head ___ 5 data.txt | -n 
 FITB | MEDIUM | To count the number of lines in file.txt: wc ___ file.txt | -l | | -l flag counts lines.
 FITB | MEDIUM | To search for 'hello' in file.txt ignoring case: grep ___ hello file.txt | -i | | -i flag makes grep case-insensitive.
 FITB | HARD   | To sort file.txt numerically: sort ___ file.txt | -n | | -n flag enables numeric sorting.
+
+# ── v2.0 PRAC questions ──────────────────────────────────────
+PRAC | EASY   | Create a file called notes.txt inside /home/user/docs. | /home/user/docs:DIR,/home/user/docs/notes.txt:FILE | MKDIR:/home/user/docs | Use 'touch' to create the file after navigating to the directory.
+PRAC | MEDIUM | Using grep and sort, create a file /home/user/result.txt that contains 'hello world'. | /home/user/result.txt:CONTENT_EQUALS=hello world | FILE:/home/user/data.txt=hello world\ngoodbye world\nhello world | Hint: use 'grep hello /home/user/data.txt | sort -u > /home/user/result.txt'.
+PRAC | HARD   | Remove duplicate lines from /home/user/input.txt and save the unique sorted output to /home/user/output.txt. The file should contain: apple\nbanana\ncherry | /home/user/output.txt:CONTENT_EQUALS=apple\nbanana\ncherry | FILE:/home/user/input.txt=cherry\napple\nbanana\napple\ncherry\nbanana | Use 'sort input.txt | uniq > output.txt' to sort and deduplicate.

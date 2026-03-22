@@ -17,11 +17,14 @@ public class UniqCommand implements Command {
     @Override
     public CommandResult execute(ShellSession session, String[] args, String stdin) {
         boolean countOccurrences = false;
+        boolean duplicatesOnly = false;
         String file = null;
 
         for (String arg : args) {
             if (arg.equals("-c")) {
                 countOccurrences = true;
+            } else if (arg.equals("-d")) {
+                duplicatesOnly = true;
             } else if (!arg.startsWith("-") && file == null) {
                 file = arg;
             }
@@ -55,29 +58,33 @@ public class UniqCommand implements Command {
                 if (linesArray[i].equals(currentLine)) {
                     count++;
                 } else {
-                    if (countOccurrences) {
-                        results.add(String.format("%7d %s", count, currentLine));
-                    } else {
-                        results.add(currentLine);
-                    }
+                    addUniqResult(results, currentLine, count, countOccurrences, duplicatesOnly);
                     currentLine = linesArray[i];
                     count = 1;
                 }
             }
 
-            if (countOccurrences) {
-                results.add(String.format("%7d %s", count, currentLine));
-            } else {
-                results.add(currentLine);
-            }
+            addUniqResult(results, currentLine, count, countOccurrences, duplicatesOnly);
         }
 
         return CommandResult.success(String.join("\n", results));
     }
 
+    private void addUniqResult(List<String> results, String line, int count,
+                               boolean countOccurrences, boolean duplicatesOnly) {
+        if (duplicatesOnly && count < 2) {
+            return;
+        }
+        if (countOccurrences) {
+            results.add(String.format("%7d %s", count, line));
+        } else {
+            results.add(line);
+        }
+    }
+
     @Override
     public String getUsage() {
-        return "uniq [-c] <file>";
+        return "uniq [-c] [-d] <file>";
     }
 
     @Override

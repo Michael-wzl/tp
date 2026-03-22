@@ -10,21 +10,23 @@ public class TouchCommand implements Command {
         if (args.length == 0) {
             return CommandResult.error("touch: missing file operand");
         }
-        try {
-            session.getVfs().createFile(args[0], session.getWorkingDir());
-            return CommandResult.success("");
-        } catch (VfsException e) {
-            return CommandResult.error("touch: " + e.getMessage());
+        for (String arg : args) {
+            try {
+                session.getVfs().createFile(arg, session.getWorkingDir());
+            } catch (VfsException e) {
+                return CommandResult.error("touch: " + e.getMessage());
+            }
         }
+        return CommandResult.success("");
     }
 
     @Override
     public String getUsage() {
-        return "touch <file>";
+        return "touch <file> [file2...]";
     }
 
     @Override
     public String getDescription() {
-        return "Create an empty file";
+        return "Create empty files";
     }
 }

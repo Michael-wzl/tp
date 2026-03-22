@@ -2,6 +2,7 @@ package linuxlingo.shell.command;
 
 import linuxlingo.shell.CommandResult;
 import linuxlingo.shell.ShellSession;
+import linuxlingo.shell.vfs.Directory;
 import linuxlingo.shell.vfs.FileNode;
 import linuxlingo.shell.vfs.Permission;
 import linuxlingo.shell.vfs.VfsException;
@@ -9,19 +10,30 @@ import linuxlingo.shell.vfs.VfsException;
 /**
  * Changes file permissions.
  * Supports both octal (e.g., 755) and symbolic (e.g., u+x) notation.
- * Syntax: chmod &lt;mode&gt; &lt;file&gt;
+ * Syntax: chmod [-R] &lt;mode&gt; &lt;file&gt;
  *
  * <p><b>Owner: C</b></p>
  */
 public class ChmodCommand implements Command {
     @Override
     public CommandResult execute(ShellSession session, String[] args, String stdin) {
-        if (args.length != 2) {
-            return CommandResult.error("chmod: " + getUsage());
+        boolean recursive = false;
+        String mode = null;
+        String file = null;
+
+        for (String arg : args) {
+            if (arg.equals("-R")) {
+                recursive = true;
+            } else if (mode == null) {
+                mode = arg;
+            } else if (file == null) {
+                file = arg;
+            }
         }
 
-        String mode = args[0];
-        String file = args[1];
+        if (mode == null || file == null) {
+            return CommandResult.error("chmod: " + getUsage());
+        }
 
         boolean isOctal = mode.matches("[0-7]{3}");
         boolean isSymbolic = mode.matches("[ugoa]+[+-=][rwx]+");
@@ -31,24 +43,41 @@ public class ChmodCommand implements Command {
 
         try {
             FileNode node = session.getVfs().resolve(file, session.getWorkingDir());
-            Permission newPerm;
 
-            if (isOctal) {
-                newPerm = Permission.fromOctal(mode);
+            if (recursive && node.isDirectory()) {
+                applyPermissionRecursive(node, mode, isOctal);
             } else {
-                newPerm = Permission.fromSymbolic(mode, node.getPermission());
+                applyPermission(node, mode, isOctal);
             }
 
-            node.setPermission(newPerm);
             return CommandResult.success("");
         } catch (VfsException e) {
             return CommandResult.error("chmod: " + e.getMessage());
         }
     }
 
+    private void applyPermission(FileNode node, String mode, boolean isOctal) {
+        Permission newPerm;
+        if (isOctal) {
+            newPerm = Permission.fromOctal(mode);
+        } else {
+            newPerm = Permission.fromSymbolic(mode, node.getPermission());
+        }
+        node.setPermission(newPerm);
+    }
+
+    private void applyPermissionRecursive(FileNode node, String mode, boolean isOctal) {
+        applyPermission(node, mode, isOctal);
+        if (node.isDirectory()) {
+            for (FileNode child : ((Directory) node).getChildren()) {
+                applyPermissionRecursive(child, mode, isOctal);
+            }
+        }
+    }
+
     @Override
     public String getUsage() {
-        return "chmod <mode> <file>";
+        return "chmod [-R] <mode> <file>";
     }
 
     @Override

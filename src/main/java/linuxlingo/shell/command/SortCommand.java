@@ -20,6 +20,7 @@ public class SortCommand implements Command {
     public CommandResult execute(ShellSession session, String[] args, String stdin) {
         boolean reverse = false;
         boolean numeric = false;
+        boolean unique = false;
 
         String file = null;
 
@@ -28,6 +29,8 @@ public class SortCommand implements Command {
                 reverse = true;
             } else if (arg.equals("-n")) {
                 numeric = true;
+            } else if (arg.equals("-u")) {
+                unique = true;
             } else if (!arg.startsWith("-") && file == null) {
                 file = arg;
             } else {
@@ -73,12 +76,24 @@ public class SortCommand implements Command {
             Collections.reverse(results);
         }
 
+        if (unique) {
+            List<String> uniqueResults = new ArrayList<>();
+            String prev = null;
+            for (String line : results) {
+                if (!line.equals(prev)) {
+                    uniqueResults.add(line);
+                    prev = line;
+                }
+            }
+            results = uniqueResults;
+        }
+
         return CommandResult.success(String.join("\n", results));
     }
 
     @Override
     public String getUsage() {
-        return "sort [-r] [-n] <file>";
+        return "sort [-r] [-n] [-u] <file>";
     }
 
     @Override

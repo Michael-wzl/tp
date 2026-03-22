@@ -11,6 +11,8 @@ import linuxlingo.shell.command.ChmodCommand;
 import linuxlingo.shell.command.ClearCommand;
 import linuxlingo.shell.command.Command;
 import linuxlingo.shell.command.CpCommand;
+import linuxlingo.shell.command.DateCommand;
+import linuxlingo.shell.command.DiffCommand;
 import linuxlingo.shell.command.EchoCommand;
 import linuxlingo.shell.command.EnvDeleteCommand;
 import linuxlingo.shell.command.EnvListCommand;
@@ -20,6 +22,7 @@ import linuxlingo.shell.command.HeadCommand;
 import linuxlingo.shell.command.HelpCommand;
 import linuxlingo.shell.command.LoadCommand;
 import linuxlingo.shell.command.LsCommand;
+import linuxlingo.shell.command.ManCommand;
 import linuxlingo.shell.command.MkdirCommand;
 import linuxlingo.shell.command.MvCommand;
 import linuxlingo.shell.command.PwdCommand;
@@ -28,9 +31,15 @@ import linuxlingo.shell.command.RmCommand;
 import linuxlingo.shell.command.SaveCommand;
 import linuxlingo.shell.command.SortCommand;
 import linuxlingo.shell.command.TailCommand;
+import linuxlingo.shell.command.TeeCommand;
 import linuxlingo.shell.command.TouchCommand;
+import linuxlingo.shell.command.TreeCommand;
+import linuxlingo.shell.command.UnaliasCommand;
+import linuxlingo.shell.command.AliasCommand;
 import linuxlingo.shell.command.UniqCommand;
 import linuxlingo.shell.command.WcCommand;
+import linuxlingo.shell.command.WhichCommand;
+import linuxlingo.shell.command.WhoamiCommand;
 
 /**
  * Registry that maps command name strings to {@link Command} instances.
@@ -81,6 +90,17 @@ public final class CommandRegistry {
         register("reset", new ResetCommand());
         register("envlist", new EnvListCommand());
         register("envdelete", new EnvDeleteCommand());
+
+        // ── v2.0 — New Commands ──────────────────────────────────
+        register("man", new ManCommand());
+        register("tree", new TreeCommand());
+        register("which", new WhichCommand());
+        register("whoami", new WhoamiCommand());
+        register("date", new DateCommand());
+        register("alias", new AliasCommand());
+        register("unalias", new UnaliasCommand());
+        register("tee", new TeeCommand());
+        register("diff", new DiffCommand());
     }
 
     public void register(String name, Command cmd) {

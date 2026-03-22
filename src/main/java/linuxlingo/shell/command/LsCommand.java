@@ -11,7 +11,7 @@ import linuxlingo.shell.vfs.VfsException;
 
 /**
  * Lists directory contents.
- * Supports: ls [-l] [-a] [path]
+ * Supports: ls [-l] [-a] [-R] [path]
  *
  * <p><b>Owner: B</b></p>
  */
@@ -20,6 +20,7 @@ public class LsCommand implements Command {
     public CommandResult execute(ShellSession session, String[] args, String stdin) {
         boolean longFormat = false;
         boolean showHidden = false;
+        boolean recursive = false;
         String targetPath = session.getWorkingDir();
         boolean hasExplicitPath = false;
 
@@ -31,6 +32,8 @@ public class LsCommand implements Command {
                         longFormat = true;
                     } else if (option == 'a') {
                         showHidden = true;
+                    } else if (option == 'R') {
+                        recursive = true;
                     } else {
                         return CommandResult.error("ls: invalid option -- " + option);
                     }
@@ -44,16 +47,11 @@ public class LsCommand implements Command {
         }
 
         try {
-            List<FileNode> children = session.getVfs().listDirectory(targetPath, session.getWorkingDir(), showHidden);
             List<String> lines = new ArrayList<>();
-            for (FileNode child : children) {
-                String name = child.getName() + (child.isDirectory() ? "/" : "");
-                if (!longFormat) {
-                    lines.add(name);
-                    continue;
-                }
-                int size = child.isDirectory() ? 0 : ((RegularFile) child).getSize();
-                lines.add(child.getPermission().toString() + "  " + size + "  " + name);
+            if (recursive) {
+                listRecursive(session, targetPath, longFormat, showHidden, lines);
+            } else {
+                listDirectory(session, targetPath, longFormat, showHidden, lines);
             }
             return CommandResult.success(String.join("\n", lines));
         } catch (VfsException e) {
@@ -61,9 +59,51 @@ public class LsCommand implements Command {
         }
     }
 
+    private void listDirectory(ShellSession session, String path,
+                               boolean longFormat, boolean showHidden,
+                               List<String> lines) {
+        List<FileNode> children = session.getVfs().listDirectory(
+                path, session.getWorkingDir(), showHidden);
+        for (FileNode child : children) {
+            String name = child.getName() + (child.isDirectory() ? "/" : "");
+            if (!longFormat) {
+                lines.add(name);
+            } else {
+                int size = child.isDirectory() ? 0 : ((RegularFile) child).getSize();
+                lines.add(child.getPermission().toString() + "  " + size + "  " + name);
+            }
+        }
+    }
+
+    private void listRecursive(ShellSession session, String path,
+                               boolean longFormat, boolean showHidden,
+                               List<String> lines) {
+        String absPath = session.getVfs().getAbsolutePath(path, session.getWorkingDir());
+        lines.add(absPath + ":");
+        List<FileNode> children = session.getVfs().listDirectory(
+                path, session.getWorkingDir(), showHidden);
+        List<String> subdirs = new ArrayList<>();
+        for (FileNode child : children) {
+            String name = child.getName() + (child.isDirectory() ? "/" : "");
+            if (!longFormat) {
+                lines.add(name);
+            } else {
+                int size = child.isDirectory() ? 0 : ((RegularFile) child).getSize();
+                lines.add(child.getPermission().toString() + "  " + size + "  " + name);
+            }
+            if (child.isDirectory()) {
+                subdirs.add(child.getAbsolutePath());
+            }
+        }
+        for (String subdir : subdirs) {
+            lines.add("");
+            listRecursive(session, subdir, longFormat, showHidden, lines);
+        }
+    }
+
     @Override
     public String getUsage() {
-        return "ls [-l] [-a] [path]";
+        return "ls [-l] [-a] [-R] [path]";
     }
 
     @Override

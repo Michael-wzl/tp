@@ -8,8 +8,8 @@ import linuxlingo.shell.ShellSession;
 import linuxlingo.shell.vfs.VfsException;
 
 /**
- * Displays the last N lines of a file (default 10).
- * Syntax: tail [-n N] &lt;file&gt;
+ * Displays the last N lines of file(s) (default 10).
+ * Syntax: tail [-n N] &lt;file&gt; [file2...]
  *
  * <p><b>Owner: C</b></p>
  */
@@ -17,7 +17,7 @@ public class TailCommand implements Command {
     @Override
     public CommandResult execute(ShellSession session, String[] args, String stdin) {
         int n = 10;
-        String file = null;
+        List<String> files = new ArrayList<>();
 
         for (int i = 0; i < args.length; i++) {
             if (args[i].equals("-n")) {
@@ -36,18 +36,42 @@ public class TailCommand implements Command {
                     return CommandResult.error("tail: invalid number of lines: " + args[i]);
                 }
             } else {
-                file = args[i];
+                files.add(args[i]);
             }
         }
 
-        String content;
-        if (file != null) {
-            try {
-                content = session.getVfs().readFile(file, session.getWorkingDir());
-            } catch (VfsException e) {
-                return CommandResult.error("tail: " + e.getMessage());
+        if (!files.isEmpty()) {
+            boolean multipleFiles = files.size() > 1;
+            List<String> allOutput = new ArrayList<>();
+
+            for (int f = 0; f < files.size(); f++) {
+                String file = files.get(f);
+                try {
+                    String content = session.getVfs().readFile(file, session.getWorkingDir());
+                    if (multipleFiles) {
+                        if (f > 0) {
+                            allOutput.add("");
+                        }
+                        allOutput.add("==> " + file + " <==");
+                    }
+                    if (!content.isEmpty()) {
+                        String[] linesArray = content.split("\n", -1);
+                        int start = Math.max(0, linesArray.length - n);
+                        for (int i = start; i < linesArray.length; i++) {
+                            allOutput.add(linesArray[i]);
+                        }
+                    }
+                } catch (VfsException e) {
+                    return CommandResult.error("tail: " + e.getMessage());
+                }
             }
-        } else if (stdin != null) {
+
+            return CommandResult.success(String.join("\n", allOutput));
+        }
+
+        // Stdin fallback
+        String content;
+        if (stdin != null) {
             content = stdin;
         } else {
             return CommandResult.error("tail: missing file operand");
@@ -70,11 +94,11 @@ public class TailCommand implements Command {
 
     @Override
     public String getUsage() {
-        return "tail [-n N] <file>";
+        return "tail [-n N] <file> [file2...]";
     }
 
     @Override
     public String getDescription() {
-        return "Display last N lines of a file (default 10)";
+        return "Display last N lines of file(s) (default 10)";
     }
 }

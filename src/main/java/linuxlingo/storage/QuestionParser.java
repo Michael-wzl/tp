@@ -14,6 +14,7 @@ import linuxlingo.exam.QuestionBank;
 import linuxlingo.exam.question.FitbQuestion;
 import linuxlingo.exam.question.McqQuestion;
 import linuxlingo.exam.question.PracQuestion;
+import linuxlingo.exam.question.PracQuestion.SetupItem;
 import linuxlingo.exam.question.Question;
 
 /**
@@ -89,7 +90,7 @@ public class QuestionParser {
                     questions.add(parseFitb(questionText, answer, explanation, difficulty));
                     break;
                 case "PRAC":
-                    questions.add(parsePrac(questionText, answer, explanation, difficulty));
+                    questions.add(parsePrac(questionText, answer, options, explanation, difficulty));
                     break;
                 default:
                     LOGGER.log(Level.WARNING, "Skipping unknown question type ''{0}'' at line {1} in {2}",
@@ -168,26 +169,141 @@ public class QuestionParser {
      * Parse a single PRAC line into a {@link PracQuestion}.
      *
      * <p>The answer field contains comma-separated checkpoints:
-     * {@code "/path:TYPE,/path2:TYPE"} where TYPE is {@code DIR} or {@code FILE}.</p>
+     * {@code "/path:TYPE,/path2:TYPE"} where TYPE is {@code DIR}, {@code FILE},
+     * {@code NOT_EXISTS}, {@code CONTENT_EQUALS=content}, or {@code PERM=rwxr-x---}.</p>
+     *
+     * <p>The options field (field 5) may contain semicolon-separated setup items:
+     * {@code "MKDIR:/path;FILE:/file.txt=content;PERM:/file.txt=rwxr-x---"}</p>
      */
     private static PracQuestion parsePrac(String questionText, String answer,
-                                          String explanation, Question.Difficulty difficulty) {
+                                          String options, String explanation,
+                                          Question.Difficulty difficulty) {
         String[] parts = answer.split(",");
         List<Checkpoint> checkpoints = new ArrayList<>();
         for (String part : parts) {
-            String[] checkpointParts = part.trim().split(":", 2);
-            if (checkpointParts.length == 2) {
-                Checkpoint.NodeType nodeType = checkpointParts[1].trim().equalsIgnoreCase("DIR")
-                        ? Checkpoint.NodeType.DIR : Checkpoint.NodeType.FILE;
-                checkpoints.add(new Checkpoint(checkpointParts[0].trim(), nodeType));
-            } else {
-                throw new IllegalArgumentException("Invalid PRAC checkpoint format: " + part);
-            }
+            checkpoints.add(parseCheckpoint(part.trim()));
         }
         if (checkpoints.isEmpty()) {
             throw new IllegalArgumentException("PRAC checkpoints must not be empty");
         }
-        return new PracQuestion(questionText, explanation, difficulty, checkpoints);
+
+        // Parse optional setup items from the options field
+        List<SetupItem> setupItems = new ArrayList<>();
+        if (options != null && !options.isEmpty()) {
+            String[] setupParts = options.split(";");
+            for (String setupPart : setupParts) {
+                SetupItem item = parseSetupItem(setupPart.trim());
+                if (item != null) {
+                    setupItems.add(item);
+                }
+            }
+        }
+
+        return new PracQuestion(questionText, explanation, difficulty, checkpoints, setupItems);
+    }
+
+    /**
+     * Parse a single checkpoint string.
+     *
+     * <p>Formats:</p>
+     * <ul>
+     *   <li>{@code /path:DIR} or {@code /path:FILE}</li>
+     *   <li>{@code /path:NOT_EXISTS}</li>
+     *   <li>{@code /path:CONTENT_EQUALS=expected content}</li>
+     *   <li>{@code /path:PERM=rwxr-x---}</li>
+     * </ul>
+     */
+    private static Checkpoint parseCheckpoint(String checkpoint) {
+        // Split at first colon after the path
+        // Paths start with / so we find the colon that separates path from type
+        int colonIdx = findTypeColon(checkpoint);
+        if (colonIdx < 0) {
+            throw new IllegalArgumentException("Invalid PRAC checkpoint format: " + checkpoint);
+        }
+
+        String path = checkpoint.substring(0, colonIdx).trim();
+        String typeStr = checkpoint.substring(colonIdx + 1).trim();
+
+        if (typeStr.equalsIgnoreCase("DIR")) {
+            return new Checkpoint(path, Checkpoint.NodeType.DIR);
+        } else if (typeStr.equalsIgnoreCase("FILE")) {
+            return new Checkpoint(path, Checkpoint.NodeType.FILE);
+        } else if (typeStr.equalsIgnoreCase("NOT_EXISTS")) {
+            return new Checkpoint(path, Checkpoint.NodeType.NOT_EXISTS);
+        } else if (typeStr.toUpperCase(Locale.ROOT).startsWith("CONTENT_EQUALS=")) {
+            String content = typeStr.substring("CONTENT_EQUALS=".length());
+            return new Checkpoint(path, Checkpoint.NodeType.CONTENT_EQUALS, content, null);
+        } else if (typeStr.toUpperCase(Locale.ROOT).startsWith("PERM=")) {
+            String perm = typeStr.substring("PERM=".length()).trim();
+            return new Checkpoint(path, Checkpoint.NodeType.PERM, null, perm);
+        } else {
+            // Default to FILE for backward compatibility
+            return new Checkpoint(path, Checkpoint.NodeType.FILE);
+        }
+    }
+
+    /**
+     * Find the colon separating path from type in a checkpoint string.
+     * Skips the first character to handle absolute paths starting with /.
+     */
+    private static int findTypeColon(String checkpoint) {
+        // Path always starts with / — scan from right for last colon
+        // But CONTENT_EQUALS and PERM have = inside, so find the colon
+        // after the last path segment
+        // Strategy: find the last colon that is NOT inside a type value
+        // Simple approach: paths can have multiple parts like /a/b/c:TYPE
+        // The TYPE part never contains / so we can split at last : after last /
+        int lastSlash = checkpoint.lastIndexOf('/');
+        if (lastSlash < 0) {
+            // no slash at all — use first colon
+            return checkpoint.indexOf(':');
+        }
+        // Find first colon after the last slash
+        int idx = checkpoint.indexOf(':', lastSlash);
+        return idx;
+    }
+
+    /**
+     * Parse a single setup item string.
+     *
+     * <p>Formats: {@code MKDIR:/path}, {@code FILE:/path=content},
+     * {@code PERM:/path=rwxr-x---}</p>
+     */
+    private static SetupItem parseSetupItem(String item) {
+        if (item.isEmpty()) {
+            return null;
+        }
+        int colonIdx = item.indexOf(':');
+        if (colonIdx < 0) {
+            return null;
+        }
+        String typeStr = item.substring(0, colonIdx).trim().toUpperCase(Locale.ROOT);
+        String rest = item.substring(colonIdx + 1).trim();
+
+        switch (typeStr) {
+        case "MKDIR":
+            return new SetupItem(SetupItem.SetupType.MKDIR, rest, null);
+        case "FILE": {
+            int eqIdx = rest.indexOf('=');
+            if (eqIdx >= 0) {
+                return new SetupItem(SetupItem.SetupType.FILE,
+                        rest.substring(0, eqIdx).trim(),
+                        rest.substring(eqIdx + 1));
+            }
+            return new SetupItem(SetupItem.SetupType.FILE, rest, "");
+        }
+        case "PERM": {
+            int eqIdx = rest.indexOf('=');
+            if (eqIdx >= 0) {
+                return new SetupItem(SetupItem.SetupType.PERM,
+                        rest.substring(0, eqIdx).trim(),
+                        rest.substring(eqIdx + 1).trim());
+            }
+            return null; // PERM requires a value
+        }
+        default:
+            return null;
+        }
     }
 
     /**

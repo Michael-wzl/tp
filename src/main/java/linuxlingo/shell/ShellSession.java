@@ -2,7 +2,14 @@ package linuxlingo.shell;
 
 import linuxlingo.cli.Ui;
 import linuxlingo.shell.command.Command;
+import linuxlingo.shell.vfs.FileNode;
 import linuxlingo.shell.vfs.VirtualFileSystem;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.logging.Logger;
 
 /**
@@ -28,6 +35,7 @@ public class ShellSession {
     private final CommandRegistry registry;
     private final Ui ui;
     private boolean running;
+    private final Map<String, String> aliases;
 
     public ShellSession(VirtualFileSystem vfs, Ui ui) {
         if (vfs == null) {
@@ -41,6 +49,7 @@ public class ShellSession {
         this.lastExitCode = 0;
         this.registry = new CommandRegistry();
         this.running = false;
+        this.aliases = new LinkedHashMap<>();
 
         LOGGER.fine("ShellSession initialised with workingDir='/'");
     }
@@ -177,16 +186,20 @@ public class ShellSession {
             // Check the operator that precedes this segment
             // operators.get(i-1) sits between segment[i-1] and segment[i]
             if (i > 0) {
-                ShellParser.TokenType precedingOp = plan.operators.get(i-1);
+                ShellParser.TokenType precedingOp = plan.operators.get(i - 1);
 
                 if (precedingOp == ShellParser.TokenType.AND && lastExitCode != 0) {
-                    // the last command failed so skipping the next command
-                    // && requires the previous command to have succeeded
+                    // && requires previous success → skip remaining
+                    break;
+                }
+
+                if (precedingOp == ShellParser.TokenType.OR && lastExitCode == 0) {
+                    // || requires previous failure → skip if succeeded
                     break;
                 }
 
                 if (precedingOp != ShellParser.TokenType.PIPE) {
-                    // SEMICOLON or AND (that passed): clear any leftover piped stdin
+                    // SEMICOLON, AND (passed), or OR (passed): clear piped stdin
                     pipedStdin = null;
                 }
                 // PIPE: pipedStdin was already set at the end of the previous iteration
@@ -196,11 +209,37 @@ public class ShellSession {
             String stdin = pipedStdin;
             pipedStdin = null;
 
+            // Handle input redirect: read file content as stdin
+            if (segment.inputRedirect != null && !segment.inputRedirect.isEmpty()) {
+                try {
+                    stdin = vfs.readFile(segment.inputRedirect, workingDir);
+                } catch (Exception e) {
+                    String errorMsg = segment.inputRedirect + ": No such file or directory";
+                    ui.println(errorMsg);
+                    setLastExitCode(1);
+                    lastResult = CommandResult.error(errorMsg);
+                    continue;
+                }
+            }
+
+            // Resolve alias: replace command name if it's an alias
+            String resolvedName = segment.commandName;
+            if (aliases.containsKey(resolvedName)) {
+                resolvedName = aliases.get(resolvedName);
+            }
+
+            // Expand glob patterns in arguments
+            String[] expandedArgs = expandGlobs(segment.args);
+
             //  Look up command in registry
-            Command command = registry.get(segment.commandName);
+            Command command = registry.get(resolvedName);
             if (command == null) {
-                String errorMsg = segment.commandName + ": command not found";
-                LOGGER.warning("Command not found: '" + segment.commandName + "'");
+                String errorMsg = resolvedName + ": command not found";
+                LOGGER.warning("Command not found: '" + resolvedName + "'");
+                String suggestion = suggestCommand(resolvedName);
+                if (suggestion != null) {
+                    errorMsg += "\n" + suggestion;
+                }
                 ui.println(errorMsg);
                 setLastExitCode(127);
                 lastResult = CommandResult.error(errorMsg);
@@ -208,7 +247,7 @@ public class ShellSession {
             }
 
             // Execute the command
-            CommandResult result = command.execute(this, segment.args, stdin);
+            CommandResult result = command.execute(this, expandedArgs, stdin);
 
             //  Print stderr immediately (user is not redirected)
             if (!result.getStderr().isEmpty()) {
@@ -297,5 +336,123 @@ public class ShellSession {
 
     public boolean isRunning() {
         return running;
+    }
+
+    public Map<String, String> getAliases() {
+        return aliases;
+    }
+
+    // ─── "Did you mean?" suggestion ─────────────────────────────
+
+    /**
+     * Suggest a similar command name using edit distance.
+     *
+     * @param input the unrecognized command name
+     * @return a suggestion string like "Did you mean 'ls'?" or null
+     */
+    public String suggestCommand(String input) {
+        if (input == null || input.isEmpty()) {
+            return null;
+        }
+        Set<String> names = registry.getAllNames();
+        String best = null;
+        int bestDist = Integer.MAX_VALUE;
+
+        for (String name : names) {
+            int dist = editDistance(input, name);
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = name;
+            }
+        }
+
+        // Only suggest if edit distance is <= 2
+        if (best != null && bestDist <= 2 && bestDist > 0) {
+            return "Did you mean '" + best + "'?";
+        }
+        return null;
+    }
+
+    /**
+     * Compute Levenshtein edit distance between two strings.
+     */
+    static int editDistance(String a, String b) {
+        int[][] dp = new int[a.length() + 1][b.length() + 1];
+        for (int i = 0; i <= a.length(); i++) {
+            dp[i][0] = i;
+        }
+        for (int j = 0; j <= b.length(); j++) {
+            dp[0][j] = j;
+        }
+        for (int i = 1; i <= a.length(); i++) {
+            for (int j = 1; j <= b.length(); j++) {
+                int cost = (a.charAt(i - 1) == b.charAt(j - 1)) ? 0 : 1;
+                dp[i][j] = Math.min(Math.min(
+                        dp[i - 1][j] + 1,       // delete
+                        dp[i][j - 1] + 1),       // insert
+                        dp[i - 1][j - 1] + cost); // replace
+            }
+        }
+        return dp[a.length()][b.length()];
+    }
+
+    // ─── Glob expansion ─────────────────────────────────────────
+
+    /**
+     * Expand glob patterns in arguments.
+     * Only expands if the argument contains a path separator with wildcards
+     * (e.g., /home/user/*.txt, ./docs/??.md).
+     * Simple patterns without '/' (like *.txt) are NOT expanded
+     * to avoid breaking commands that take patterns as arguments (e.g., find -name *.txt).
+     *
+     * @param args the original arguments
+     * @return expanded arguments
+     */
+    public String[] expandGlobs(String[] args) {
+        List<String> expanded = new ArrayList<>();
+        for (String arg : args) {
+            // Only expand globs that contain a directory path
+            if ((arg.contains("*") || arg.contains("?")) && arg.contains("/")) {
+                List<String> matches = expandSingleGlob(arg);
+                if (!matches.isEmpty()) {
+                    expanded.addAll(matches);
+                } else {
+                    expanded.add(arg); // no match → keep literal
+                }
+            } else {
+                expanded.add(arg);
+            }
+        }
+        return expanded.toArray(new String[0]);
+    }
+
+    private List<String> expandSingleGlob(String pattern) {
+        List<String> results = new ArrayList<>();
+
+        // Determine base directory and file pattern
+        String dir;
+        String filePattern;
+        int lastSlash = pattern.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            dir = pattern.substring(0, lastSlash);
+            if (dir.isEmpty()) {
+                dir = "/";
+            }
+            filePattern = pattern.substring(lastSlash + 1);
+        } else {
+            dir = workingDir;
+            filePattern = pattern;
+        }
+
+        try {
+            List<FileNode> matches = vfs.findByName(dir, workingDir, filePattern);
+            for (FileNode match : matches) {
+                results.add(match.getAbsolutePath());
+            }
+        } catch (Exception e) {
+            // If expansion fails, return empty list
+        }
+
+        return results;
     }
 }

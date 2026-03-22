@@ -2,6 +2,8 @@ package linuxlingo.shell.command;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 import linuxlingo.shell.CommandResult;
 import linuxlingo.shell.ShellSession;
@@ -9,7 +11,7 @@ import linuxlingo.shell.vfs.VfsException;
 
 /**
  * Searches for a pattern in a file.
- * Syntax: grep [-i] [-v] [-n] [-c] &lt;pattern&gt; &lt;file&gt;
+ * Syntax: grep [-E] [-i] [-v] [-n] [-c] &lt;pattern&gt; &lt;file&gt;
  *
  * <p><b>Owner: C</b></p>
  */
@@ -20,6 +22,7 @@ public class GrepCommand implements Command {
         boolean showLineNumbers = false;
         boolean countOnly = false;
         boolean invertMatch = false;
+        boolean useRegex = false;
 
         String pattern = null;
         String file = null;
@@ -33,6 +36,8 @@ public class GrepCommand implements Command {
                 countOnly = true;
             } else if (arg.equals("-v")) {
                 invertMatch = true;
+            } else if (arg.equals("-E")) {
+                useRegex = true;
             } else if (!arg.startsWith("-")) {
                 if (pattern == null) {
                     pattern = arg;
@@ -65,17 +70,34 @@ public class GrepCommand implements Command {
             return CommandResult.success(countOnly ? "0" : "");
         }
 
+        // Build regex pattern or use literal matching
+        Pattern regexPattern = null;
+        if (useRegex) {
+            try {
+                int flags = ignoreCase ? Pattern.CASE_INSENSITIVE : 0;
+                regexPattern = Pattern.compile(pattern, flags);
+            } catch (PatternSyntaxException e) {
+                return CommandResult.error("grep: invalid regular expression: " + pattern);
+            }
+        }
+
         String[] linesArray = content.split("\n");
         List<String> results = new ArrayList<>();
         int count = 0;
 
-        String searchPattern = ignoreCase ? pattern.toLowerCase() : pattern;
+        String searchPattern = (!useRegex && ignoreCase) ? pattern.toLowerCase() : pattern;
 
         for (int i = 0; i < linesArray.length; i++) {
             String line = linesArray[i];
-            String searchLine = ignoreCase ? line.toLowerCase() : line;
+            boolean matches;
 
-            boolean matches = searchLine.contains(searchPattern);
+            if (useRegex) {
+                matches = regexPattern.matcher(line).find();
+            } else {
+                String searchLine = ignoreCase ? line.toLowerCase() : line;
+                matches = searchLine.contains(searchPattern);
+            }
+
             if (invertMatch) {
                 matches = !matches;
             }
@@ -106,11 +128,11 @@ public class GrepCommand implements Command {
 
     @Override
     public String getUsage() {
-        return "grep [-i] [-v] [-n] [-c] <pattern> <file>";
+        return "grep [-E] [-i] [-v] [-n] [-c] <pattern> <file>";
     }
 
     @Override
     public String getDescription() {
-        return "Search for pattern in file";
+        return "Search for pattern in file (use -E for regex)";
     }
 }

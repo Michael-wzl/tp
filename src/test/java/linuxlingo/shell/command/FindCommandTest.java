@@ -1,6 +1,5 @@
 package linuxlingo.shell.command;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -36,12 +35,14 @@ public class FindCommandTest {
     }
 
     @Test
-    public void findCommand_invalidArgs_returnsError() {
+    public void findCommand_noNameFlag_listAllFiles() {
         String[] args = {"/tmp"};
         CommandResult result = command.execute(session, args, null);
 
-        assertFalse(result.isSuccess());
-        assertEquals("find: " + command.getUsage(), result.getStderr());
+        // v2.0: find without -name defaults to *, listing all files
+        assertTrue(result.isSuccess());
+        assertTrue(result.getStdout().contains("/tmp/match.txt"));
+        assertTrue(result.getStdout().contains("/tmp/other.log"));
     }
 
     @Test
@@ -50,6 +51,5 @@ public class FindCommandTest {
         CommandResult result = command.execute(session, args, null);
 
         assertFalse(result.isSuccess());
-        assertEquals("find: " + command.getUsage(), result.getStderr());
     }
 }

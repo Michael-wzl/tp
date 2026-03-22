@@ -12,3 +12,8 @@ FITB | EASY   | To make file.txt readable, writable, and executable by owner (oc
 FITB | MEDIUM | To add execute permission for the owner: chmod ___ file.txt | u+x | | u+x adds execute permission for the user/owner.
 FITB | MEDIUM | To remove write permission from group and others: chmod ___ file.txt | go-w | | g=group, o=others, -w removes write.
 FITB | HARD   | What octal permission represents 'rw-r--r--'? | 644 | | r=4, w=2. Owner: 4+2=6, Group: 4, Others: 4.
+
+# ── v2.0 PRAC questions ──────────────────────────────────────
+PRAC | EASY   | Create a file /home/user/script.sh and make it executable by the owner using chmod. | /home/user/script.sh:FILE,/home/user/script.sh:PERM=rwxr--r-- | | Use 'touch script.sh' then 'chmod u+x script.sh' or 'chmod 744 script.sh'.
+PRAC | MEDIUM | Set permissions on /home/user/secret.txt to be readable and writable only by the owner (no group or other access). | /home/user/secret.txt:PERM=rw------- | FILE:/home/user/secret.txt=confidential data | Use 'chmod 600 secret.txt'.
+PRAC | HARD   | Set permissions on all files inside /home/user/project recursively: directories should be rwxr-xr-x and files should be rw-r--r--. Create the directory and a file first. | /home/user/project:DIR,/home/user/project:PERM=rwxr-xr-x,/home/user/project/README.md:FILE | MKDIR:/home/user/project;FILE:/home/user/project/README.md=readme | Use 'chmod -R 755 project/' for dirs, then 'chmod 644 project/README.md'.
